@@ -1021,19 +1021,29 @@ void MyWriteConsoleOutputCharAttrA(HANDLE hConsoleOutput, LPCSTR lpCharacter, LP
 				}
 			}
 		}
-	} else if(active_code_page == 437) {
-		WCHAR *wchar = (WCHAR *)HeapAlloc(GetProcessHeap(), 0, nLength * 2);
-		MultiByteToWideChar(active_code_page, MB_USEGLYPHCHARS, lpCharacter, nLength, wchar, nLength);
-		WriteConsoleOutputCharacterW(hConsoleOutput, wchar, nLength, dwWriteCoord, &written);
-		HeapFree(GetProcessHeap(), 0, wchar);
+		if(attributes) {
+			WriteConsoleOutputAttribute(hConsoleOutput, attributes, nLength, dwWriteCoord, &written);
+		}
 	} else {
+		WCHAR *wchar = (WCHAR *)HeapAlloc(GetProcessHeap(), 0, nLength * 2);
+		DWORD dwFlags = 0;
+		if(glyph_char){
+			dwFlags = MB_USEGLYPHCHARS;
+		}
+		MultiByteToWideChar(active_code_page, dwFlags, lpCharacter, nLength, wchar, nLength);
+		// Print null character as blank space instead of white square
+		for(int i = 0; i < nLength; i++){
+			if(wchar[i] == '\0'){
+				wchar[i] = ' ';
+			}
+		}
 		if((nLength + dwWriteCoord.X) <= scr_width) {	// No overflow, write everything at once
-			WriteConsoleOutputCharacterA(hConsoleOutput, lpCharacter, nLength, dwWriteCoord, &written);
+			WriteConsoleOutputCharacterW(hConsoleOutput, wchar, nLength, dwWriteCoord, &written);
 			WriteConsoleOutputAttribute(hConsoleOutput, attributes, nLength, dwWriteCoord, &written);
 		} else {	// Manage write coord one line at a time
 			DWORD pos = 0;
 			if(dwWriteCoord.X > 0) {
-				WriteConsoleOutputCharacterA(hConsoleOutput, lpCharacter, scr_width - dwWriteCoord.X, dwWriteCoord, &written);
+				WriteConsoleOutputCharacterW(hConsoleOutput, wchar, scr_width - dwWriteCoord.X, dwWriteCoord, &written);
 				WriteConsoleOutputAttribute(hConsoleOutput, attributes, scr_width - dwWriteCoord.X, dwWriteCoord, &written);
 				dwWriteCoord.Y++;
 				nLength -= scr_width - dwWriteCoord.X;
@@ -1041,21 +1051,18 @@ void MyWriteConsoleOutputCharAttrA(HANDLE hConsoleOutput, LPCSTR lpCharacter, LP
 				dwWriteCoord.X = 0;
 			}
 			while(nLength > scr_width) {
-				WriteConsoleOutputCharacterA(hConsoleOutput, lpCharacter + pos, scr_width, dwWriteCoord, &written);
+				WriteConsoleOutputCharacterW(hConsoleOutput, wchar + pos, scr_width, dwWriteCoord, &written);
 				WriteConsoleOutputAttribute(hConsoleOutput, attributes + pos, scr_width, dwWriteCoord, &written);
 				dwWriteCoord.Y++;
 				nLength -= scr_width;
 				pos += scr_width;
 			}
 			if(nLength) {
-				WriteConsoleOutputCharacterA(hConsoleOutput, lpCharacter + pos, nLength, dwWriteCoord, &written);
+				WriteConsoleOutputCharacterW(hConsoleOutput, wchar + pos, nLength, dwWriteCoord, &written);
 				WriteConsoleOutputAttribute(hConsoleOutput, attributes + pos, nLength, dwWriteCoord, &written);
 			}				
 		}
-		return;
-	}		
-	if(attributes) {
-		WriteConsoleOutputAttribute(hConsoleOutput, attributes, nLength, dwWriteCoord, &written);
+		HeapFree(GetProcessHeap(), 0, wchar);
 	}
 }
 
